@@ -1,0 +1,97 @@
+{
+  "agent-meta-version": "0.10.2",
+
+  "platforms": ["sharkord"],
+
+  "project": {
+    "name":   "sharkord-stream-with-friends",
+    "prefix": "swf",
+    "short":  "stream-with-friends"
+  },
+
+  "variables": {
+
+    "_section_generic": "================================================================",
+    "_section_generic_desc": "GENERISCHE VARIABLEN — für jedes Projekt relevant",
+    "_section_generic_end": "================================================================",
+
+    "PROJECT_NAME":        "sharkord-stream-with-friends",
+    "PROJECT_DESCRIPTION": "Sharkord-Plugin, das es Nutzern und ihren Freunden ermöglicht, gemeinsam Streams an einen Server zu senden und diese dort anzuzeigen.",
+    "PLATFORM":            "Sharkord Plugin SDK",
+    "RUNTIME":             "Bun (NICHT Node.js)",
+    "LANGUAGE":            "TypeScript (ES6+, strict)",
+
+    "_comment_deps": "Kern-Abhängigkeiten mit konkreter Version — eine pro Zeile als Markdown-Liste",
+    "SYSTEM_DEPENDENCIES": "- @sharkord/plugin-sdk: `0.0.16`\n- bun: `>=1.0.0`",
+
+    "_comment_urls": "Relevante System-URLs — eine pro Zeile als Markdown-Liste",
+    "SYSTEM_URLS":         "- Web-UI: `http://localhost:3000`",
+
+    "BUILD_COMMAND":       "bun run build",
+    "TEST_COMMAND":        "bun test",
+    "DEV_COMMANDS":        "bun run build\nbun test",
+    "DEV_STACK_START":     "docker compose -f docker-compose.dev.yml up -d",
+    "DEV_STACK_RELOAD":    "docker compose -f docker-compose.dev.yml restart",
+
+    "PROJECT_CONTEXT":     "Sharkord-Plugin 'Stream with Friends': Nutzer können gemeinsam mit Freunden Streams (z.B. via obs) an einen Sharkord-Server senden. Das Plugin verwaltet aktive Stream-Sessions, zeigt diese in einem dedizierten Channel an und erlaubt es Freunden, bestehende Sessions beizutreten oder eigene zu starten. Kommunikation läuft über das Sharkord Plugin SDK.",
+    "PROJECT_STRUCTURE":   "src/\n  index.ts              # Entry-Point, Plugin-Registrierung\n  commands/\n    stream-start.ts     # Slash-Command: Stream starten\n    stream-stop.ts      # Slash-Command: Stream beenden\n    stream-join.ts      # Slash-Command: Stream beitreten\n    stream-list.ts      # Slash-Command: Aktive Streams auflisten\n  handlers/\n    stream-display.ts   # Stream-Anzeige im Channel aktualisieren\n  services/\n    session-manager.ts  # Verwaltung aktiver Stream-Sessions\n  utils/\n    stream-url.ts       # URL-Validierung und -Parsing\n  types/\n    stream.ts           # Gemeinsame Typen (StreamSession, StreamUser, etc.)",
+    "ENTRY_POINT_PATTERN": "src/index.ts — Plugin-Registrierung und Event-Hooks",
+    "KEY_PATTERNS":        "- Stream-Sessions werden im SessionManager als Map gehalten (channelId → StreamSession[])\n- Jede Session hat eine eindeutige ID, einen Host-User und optionale Co-Streamer\n- Stream-Anzeige wird bei jeder Änderung als Embed im Channel aktualisiert\n- Slash-Commands: /stream start <url>, /stream stop, /stream join <id>, /stream list",
+    "ARCHITECTURE":        "src/\n  index.ts              # Plugin-Entry-Point\n  commands/             # Slash-Command-Handler\n  handlers/             # Reaktive Event-Handler\n  services/             # Business-Logik (SessionManager)\n  types/                # Shared TypeScript-Typen",
+    "CODE_CONVENTIONS":    "- TypeScript ES6+, kein `require`, kein `var`, kein `any`\n- Named Exports (kein default export)\n- kebab-case: `module-name.ts`, Tests: `<module>.test.ts`",
+    "EXTRA_DONTS":         "- Keine hardcodierten Stream-URLs oder IDs\n- Keine direkten HTTP-Calls außerhalb des SDK-Contexts",
+    "CODE_QUALITY_RULES":  "- Keine ungenutzten Imports\n- Keine impliziten `any`\n- Alle Funktionen typisiert\n- StreamSession-Typ immer vollständig befüllen",
+    "TEST_COMMANDS":       "bun test\nbun test --coverage",
+    "BUILD_COMMANDS":      "bun run build",
+    "REQ_CATEGORIES":      "- Kernfunktionalität\n- Lifecycle\n- Nichtfunktionale Anforderungen",
+    "REQ_CATEGORIES_LIST": "- **Kernfunktionalität** — Streams starten, stoppen, beitreten, auflisten; Anzeige im Channel\n- **Lifecycle** — Plugin-Startup, Session-Cleanup bei Disconnect, Fehlerbehandlung\n- **Nichtfunktionale Anforderungen** — Geringe Latenz bei der Anzeige, sichere URL-Validierung",
+
+    "_section_infra": "================================================================",
+    "_section_infra_desc": "INFRASTRUKTUR-VARIABLEN — Docker, Ports, Container (generisch)",
+    "_section_infra_end": "================================================================",
+
+    "SERVICE_NAME":        "app",
+    "CONTAINER_NAME":      "sharkord-stream-with-friends-dev",
+
+    "_comment_primary_port": "Haupt-Port der Anwendung (Web-UI, HTTP-API etc.)",
+    "PRIMARY_PORT":        "3000",
+
+    "_comment_extra_ports": "Weitere benötigte Ports — eine pro Zeile als Markdown-Liste. Leer lassen wenn nicht benötigt.",
+    "EXTRA_PORTS":         "",
+
+    "DOCKER_STACKS_OVERVIEW": "| Dev-Stack | docker-compose.dev.yml | Lokales Testen mit Sharkord-Core |",
+    "EXTRA_VOLUMES":           "",
+    "EXTRA_VOLUME_DEFINITIONS": "",
+    "EXTRA_ENV_VARS":          "",
+    "EXTRA_STARTUP_INFO":      "",
+    "HOST_LAN_IP":             "192.168.1.100",
+
+    "_section_platform": "================================================================",
+    "_section_platform_desc": "PLATTFORM-VARIABLEN — nur bei platforms: [\"sharkord\"] relevant",
+    "_section_platform_end": "================================================================",
+
+    "_comment_image_tag": "Docker-Image-Tag des Sharkord-Kernsystems — muss mit peerDependencies in package.json übereinstimmen",
+    "PRIMARY_IMAGE_TAG":   "v0.0.16",
+
+    "_comment_plugin_dir": "Verzeichnisname des Plugins = 'name'-Feld in package.json (Sharkord erkennt Plugin anhand dieses Namens)",
+    "PLUGIN_DIR_NAME":     "sharkord-stream-with-friends",
+
+    "_section_project": "================================================================",
+    "_section_project_desc": "PROJEKTSPEZIFISCHE VARIABLEN — individuelle Werte pro Projekt",
+    "_section_project_end": "================================================================",
+
+    "BUILD_OUTPUT":        "- index.js  (minified ESM Bundle)\n- package.json",
+    "ARTIFACT_ZIP_CMD":    "powershell -Command \"Compress-Archive -Path 'dist/sharkord-stream-with-friends' -DestinationPath 'dist/sharkord-stream-with-friends.zip' -Force\"",
+    "ARTIFACT_TAR_CMD":    "cd dist && tar -czf sharkord-stream-with-friends.tar.gz sharkord-stream-with-friends/ && cd ..",
+    "GH_ASSETS":           "dist/sharkord-stream-with-friends.zip dist/sharkord-stream-with-friends.tar.gz",
+    "REQUIRED_BINARIES_SECTION": "Keine externen Binaries erforderlich.",
+    "BINARY_INSTALL_STEPS":      "",
+    "REQUIRED_BINARY_NAMES":     "(keine)",
+    "BUILD_SYSTEM_NOTES":        "bun run build erzeugt dist/sharkord-stream-with-friends/",
+    "VERSION_DIST_BEHAVIOUR":    "build.ts kopiert package.json 1:1 ins Dist.",
+
+    "SHARKORD_MIN_VERSION":      "0.0.16",
+    "TECH_STACK":                "Bun + TypeScript (ESM)"
+
+  }
+}
