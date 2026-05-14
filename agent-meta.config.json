@@ -1,5 +1,5 @@
 {
-  "agent-meta-version": "0.10.2",
+  "agent-meta-version": "0.20.0",
 
   "platforms": ["sharkord"],
 
@@ -8,6 +8,9 @@
     "prefix": "swf",
     "short":  "stream-with-friends"
   },
+
+  "_comment_dod_preset": "DoD-Qualitätsprofil: 'full' (alle Checks), 'standard' (Tests ja, REQ-IDs nein), 'rapid-prototyping' (alles aus). Einzelne Overrides via 'dod' Block.",
+  "dod-preset": "rapid-prototyping",
 
   "variables": {
 
@@ -91,7 +94,23 @@
     "VERSION_DIST_BEHAVIOUR":    "build.ts kopiert package.json 1:1 ins Dist.",
 
     "SHARKORD_MIN_VERSION":      "0.0.16",
-    "TECH_STACK":                "Bun + TypeScript (ESM)"
+    "TECH_STACK":                "Bun + TypeScript (ESM)",
+
+    "PROJECT_GOAL":              "OBS-Streams an Sharkord senden, um sich mit Freunden zu hören und gegenseitig den Bildschirm zu sehen",
+    "PROJECT_LANGUAGES":         "TypeScript, Bun Shell",
+    "COMMUNICATION_LANGUAGE":    "English",
+    "CODE_LANGUAGE":             "English",
+    "DOCS_LANGUAGE":             "English",
+    "INTERNAL_DOCS_LANGUAGE":    "Deutsch",
+    "DEVELOPER_SNIPPETS_PATH":   "developer/bun-typescript.md",
+    "TESTER_SNIPPETS_PATH":      "tester/bun-typescript.md",
+    "AGENT_META_REPO":           "https://github.com/Popoboxxo/agent-meta",
+
+    "USER_INPUT_LANGUAGE":        "Deutsch",
+
+    "GIT_PLATFORM":              "GitHub",
+    "GIT_REMOTE_URL":            "https://github.com/Popoboxxo/sharkord-stream-with-friends",
+    "GIT_MAIN_BRANCH":           "main"
 
   }
 }

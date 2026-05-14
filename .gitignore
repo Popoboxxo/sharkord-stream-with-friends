@@ -1,1 +1,4 @@
 sync.log
+.venv/
+.claude/
+.continue/
