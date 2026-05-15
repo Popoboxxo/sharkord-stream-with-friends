@@ -174,11 +174,29 @@ Als **Server-Admin** möchte ich Streams anderer Nutzer beenden können, damit i
 ### REQ-014: Latenz
 Die Gesamtlatenz vom OBS-Sender bis zum Zuschauer soll unter **500ms** liegen (bei guter Netzwerkverbindung).
 
+**Akzeptanzkriterien:**
+- In lokalen Tests (Loopback/localhost) liegt die gemessene Latenz unter 500ms (Sender → Server → Empfänger).
+- Die Latenz wird im Plugin via `performance.now()` oder Mediasoup-Statistiken gemessen und geloggt.
+- ffmpeg wird mit `-c:v copy` betrieben, um Encoding-Latenz zu vermeiden.
+- Audio-Transcoding (AAC → Opus) darf nicht mehr als 50ms zusätzliche Latenz erzeugen.
+
 ### REQ-015: Ressourcen-Limit
 Das Plugin darf auf dem Sharkord-Server nicht mehr als **1 zusätzlichen Mediasoup-Producer** pro Stream-Channel erzeugen (für den Ingest). Die Zuschauer konsumieren über normale Mediasoup-Consumer, die Sharkord ohnehin verwaltet.
 
+**Akzeptanzkriterien:**
+- Pro aktivem Stream werden genau 2 Producer erzeugt: 1x Video (H.264), 1x Audio (Opus).
+- Die Anzahl aktiver Producer im Plugin-State ist jederzeit abrufbar (`/stream-info`).
+- Bei Stream-Ende werden beide Producer explizit geschlossen (`producer.close()`).
+- Memory-Leak-Test: Nach 100 Start/Stop-Zyklen ist der Producer-Count wieder bei 0.
+
 ### REQ-016: Kompatibilität
 Das Plugin muss mit der **Sharkord v0.0.20** API funktionieren und die verfügbaren Plugin-Kommandos, Events und Mediasoup-Hooks nutzen.
+
+**Akzeptanzkriterien:**
+- Das Plugin verwendet ausschließlich APIs aus `@sharkord/plugin-sdk@0.0.16` (peer dependency).
+- Keine Verwendung von `ctx.actions.voice` (deprecated) — nur `ctx.voice`.
+- Das Plugin nutzt `ctx.voice.getRouter(channelId)` und `ctx.voice.createStream()` für Mediasoup-Integration.
+- Bei Sharkord-Update wird das Plugin mit der neuen Version getestet (Compatibility-Layer in `src/utils/voice-compat.ts`).
 
 ### REQ-017: Fehlertoleranz & Auto-Reconnect
 Wenn der Stream unerwartet abbricht (Netzwerkfehler, OBS-Crash, ffmpeg-Crash), soll das Plugin den Zuschauern eine "Stream unterbrochen"-Meldung anzeigen und automatisch reconnecten, solange der Sender noch im Channel ist.
@@ -196,12 +214,27 @@ Wenn der Stream unerwartet abbricht (Netzwerkfehler, OBS-Crash, ffmpeg-Crash), s
 ### REQ-018: Alles in Sharkord UI
 Sämtliche Interaktionen (Stream starten, stoppen, zuschauen, Token anzeigen, Einstellungen) müssen über Sharkord-Plugin-Komponenten in der **nativen Sharkord UI** erfolgen. Keine externen Fenster, Popups oder Websites.
 
+**Akzeptanzkriterien:**
+- Alle Plugin-Interaktionen erfolgen über Sharkord-Plugin-Komponenten (React) oder Slash-Commands.
+- Keine externe URL wird geöffnet, kein `<iframe>`, kein Popup-Fenster.
+- Der Token wird im Sharkord-Chat oder einem Plugin-Panel angezeigt, nicht per E-Mail oder externer Seite.
+- Die Einstellungen werden über `ctx.settings.register()` in die Sharkord-UI integriert.
+
 ### REQ-019: Plugin-Kommandos
 Folgende Slash-Kommandos sollen verfügbar sein:
 - `/stream-start` — Stream starten (generiert Token, zeigt RTMP-URL + Key)
 - `/stream-stop` — Stream beenden
 - `/stream-info` — Zeigt aktuellen Stream-Status und Zuschauerzahl
 - `/stream-token` — Zeigt aktuelles OBS-Token erneut an
+- `/stream-token-revoke` — Widerruft aktuelles Token und generiert neu (REQ-007a)
+- `/stream-reset-all-tokens` — Admin-Command: invalidiert alle Tokens global (REQ-007b)
+- `/stream-kick <user>` — Admin-Command: beendet Stream eines anderen Nutzers (REQ-013a)
+
+**Akzeptanzkriterien:**
+- Alle Commands sind über die Sharkord-Chat-Eingabe mit `/` erreichbar.
+- Jeder Command hat eine kurze Hilfe-Beschreibung (erscheint bei Autocomplete).
+- Ungültige oder unberechtigte Commands zeigen eine klare Fehlermeldung an.
+- Commands sind nur im Voice-Channel verfügbar (oder zeigen einen Hinweis, dass man joinen muss).
 
 ### REQ-020: Stream-Overlay-Component
 Ein React-Component (`StreamPanel`) soll im Channel-UI eingebunden werden können (via Sharkord Plugin Slot oder Overlay). Es zeigt:
@@ -210,6 +243,13 @@ Ein React-Component (`StreamPanel`) soll im Channel-UI eingebunden werden könne
 - Zuschauerzahl
 - Live-Indikator
 - Stummschalten/Volume-Control
+
+**Akzeptanzkriterien:**
+- Das Component wird im Channel-Panel gerendert (z.B. via Plugin-Slot oder Overlay-API).
+- Das `<video>` Element spielt den WebRTC-Stream über einen Mediasoup-Consumer ab.
+- Der Live-Indikator blinkt während des Streams und verschwindet bei Stream-Ende.
+- Die Stummschalten/Volume-Control beeinflusst nur den Stream-Audio, nicht den Voice-Chat.
+- Bei mehreren aktiven Streams im Channel werden mehrere StreamPanels angezeigt (REQ-001).
 
 ---
 
