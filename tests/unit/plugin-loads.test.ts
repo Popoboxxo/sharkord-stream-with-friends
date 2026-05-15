@@ -1,6 +1,6 @@
 import { describe, it, expect } from "bun:test";
-import plugin from "../src/index";
-import { createMockPluginContext } from "../tests/helpers/mock-plugin-context";
+import plugin from "../../src/index.ts";
+import { createMockPluginContext } from "../helpers/mock-plugin-context.ts";
 
 describe("sharkord-stream-with-friends", () => {
   it("should export a valid plugin function", () => {

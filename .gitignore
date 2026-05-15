@@ -2,3 +2,5 @@ sync.log
 .venv/
 .claude/
 .continue/
+node_modules/
+dist/
