@@ -1,0 +1,25 @@
+{
+  "name": "sharkord-stream-with-friends",
+  "version": "0.1.0-alpha.1",
+  "description": "Stream with Friends plugin for Sharkord — watch streams together in sync",
+  "type": "module",
+  "main": "dist/sharkord-stream-with-friends/index.js",
+  "scripts": {
+    "build": "bun scripts/build.ts",
+    "dev": "bun scripts/build.ts --watch",
+    "test": "bun test",
+    "lint": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "peerDependencies": {
+    "@sharkord/plugin-sdk": "0.0.16"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "@types/bun": "latest"
+  },
+  "sharkord": {
+    "author": "Sharkord Team",
+    "homepage": "https://github.com/popoboxxo/sharkord-stream-with-friends"
+  }
+}
