@@ -75,13 +75,31 @@ Als **Sender** möchte ich meinen Stream direkt in der Sharkord-Oberfläche star
 - Ein Indicator zeigt an, dass gerade gestreamt wird.
 
 ### REQ-007: Stream-Token für Authentifizierung
-Als **Sender** möchte ich einen **eindeutigen Stream-Token** erhalten, den ich als Stream-Key in OBS eingeben muss, damit nicht jeder beliebige Nutzer in meinen Channel streamen kann.
+Als **Sender** möchte ich einen **persistenter Stream-Token** erhalten, den ich dauerhaft in OBS hinterlegen kann, damit ich nicht bei jedem Stream neu konfigurieren muss.
 
 **Akzeptanzkriterien:**
-- Das Token ist einmalig pro Stream-Session und an den Channel gebunden.
-- Das Token läuft ab, wenn der Stream gestoppt wird oder der Channel verlassen wird.
-- Der RTMP-Server lehnt Verbindungen mit ungültigem Token ab.
-- Optional: Token kann auf bestimmte Nutzer beschränkt werden (nur Channel-Owner/Mod).
+- Das Token ist an den **User** gebunden (nicht an die Session).
+- Das Token hat eine Gültigkeit von **1 Jahr** ab Erstellung.
+- Das Token funktioniert in jedem Channel, in dem der User berechtigt ist zu streamen.
+- Der RTMP-Server lehnt Verbindungen mit ungültigem oder abgelaufenem Token ab.
+
+### REQ-007a: Token-Revoke durch User
+Als **Sender** möchte ich meinen eigenen Token jederzeit **widerrufen (revoke)** und einen **neuen generieren** können, damit ich Kontrolle über meine Sicherheit habe (z.B. bei Verdacht auf Leak).
+
+**Akzeptanzkriterien:**
+- Ein `/stream-token-revoke` Command oder UI-Button invalidiert den aktuellen Token sofort.
+- Ein neuer Token wird sofort generiert und angezeigt.
+- Der alte Token lehnt ab sofort jede RTMP-Verbindung ab.
+- Der Nutzer muss den neuen Token in OBS aktualisieren.
+
+### REQ-007b: Globaler Token-Reset durch Admin
+Als **Server-Admin** möchte ich **alle Stream-Tokens auf dem Server gleichzeitig invalidieren** können, damit bei einem Sicherheitsvorfall alle Sender ihre Tokens neu ausstellen müssen.
+
+**Akzeptanzkriterien:**
+- Ein Admin-Command (z.B. `/stream-reset-all-tokens`) invalidiert alle existierenden Tokens.
+- Alle laufenden Streams werden sofort beendet.
+- Alle Nutzer erhalten eine Benachrichtigung, dass sie einen neuen Token generieren müssen.
+- Nur Nutzer mit Admin- oder Manage-Server-Permissions können diesen Befehl ausführen.
 
 ### REQ-008: Kein externer Webserver
 Als **Server-Admin** möchte ich, dass für das Streaming **kein separater Reverse-Proxy oder Webserver** nötig ist, damit die Infrastruktur einfach bleibt.
