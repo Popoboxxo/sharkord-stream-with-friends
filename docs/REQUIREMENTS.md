@@ -20,7 +20,8 @@ Als **Channel-Mitglied** möchte ich einen Stream in dem Channel starten können
 **Akzeptanzkriterien:**
 - Der Stream wird an den Channel gebunden, nicht global.
 - Nur Mitglieder des Channels können den Stream sehen.
-- Es kann nur **ein aktiver Stream pro Channel** existieren (erster Sender gewinnt).
+- **Mehrere gleichzeitige Streams pro Channel sind erlaubt** — jeder Sender bekommt einen eigenen Slot/Anzeige.
+- Im UI wird jeder aktive Stream mit Sender-Name angezeigt.
 
 ### REQ-002: Multi-Channel Isolation
 Als **Server-Admin** möchte ich, dass Streams in unterschiedlichen Channels vollständig unabhängig voneinander laufen, damit es keine Überschneidungen oder Konflikte gibt.
@@ -158,6 +159,14 @@ Als **Server-Admin** möchte ich optional einschränken können, wer in einem Ch
 - Die Berechtigungsprüfung erfolgt vor Stream-Start.
 - Standard: "jeder im Channel".
 
+### REQ-013a: Admin kann fremde Streams beenden
+Als **Server-Admin** möchte ich Streams anderer Nutzer beenden können, damit ich im Notfall eingreifen kann.
+
+**Akzeptanzkriterien:**
+- Ein Admin-Command (z.B. `/stream-kick <user>`) beendet den Stream des angegebenen Nutzers sofort.
+- Der beendete Streamer erhält eine Benachrichtigung und kann danach manuell neu starten.
+- Nur Nutzer mit Admin- oder Manage-Channel-Permissions können diesen Befehl ausführen.
+
 ---
 
 ## 6. Nicht-funktionale Anforderungen (NFR)
@@ -171,8 +180,14 @@ Das Plugin darf auf dem Sharkord-Server nicht mehr als **1 zusätzlichen Mediaso
 ### REQ-016: Kompatibilität
 Das Plugin muss mit der **Sharkord v0.0.20** API funktionieren und die verfügbaren Plugin-Kommandos, Events und Mediasoup-Hooks nutzen.
 
-### REQ-017: Fehlertoleranz
-Wenn der Stream unerwartet abbricht (Netzwerkfehler, OBS-Crash, ffmpeg-Crash), soll das Plugin den Zuschauern eine "Stream unterbrochen"-Meldung anzeigen und nach 5 Sekunden automatisch auf "Stream beendet" wechseln.
+### REQ-017: Fehlertoleranz & Auto-Reconnect
+Wenn der Stream unerwartet abbricht (Netzwerkfehler, OBS-Crash, ffmpeg-Crash), soll das Plugin den Zuschauern eine "Stream unterbrochen"-Meldung anzeigen und automatisch reconnecten, solange der Sender noch im Channel ist.
+
+**Akzeptanzkriterien:**
+- Bei temporärem Verbindungsabbruch (OBS reconnect, Netzwerk-Flackern) wird der Stream automatisch wieder aufgenommen.
+- Wenn der Sender den Channel verlässt, wird sofort beendet und **nicht** reconnectet.
+- Nach 5 Sekunden erfolgloser Wiederherstellung wird "Stream beendet" angezeigt.
+- Zuschauer müssen nicht manuell neu laden.
 
 ---
 
@@ -198,12 +213,31 @@ Ein React-Component (`StreamPanel`) soll im Channel-UI eingebunden werden könne
 
 ---
 
-## 8. Offene Punkte & Vertiefung
+## 8. Design-Entscheidungen (User-Antworten auf Ideation-Fragen)
+
+Die folgenden Entscheidungen wurden im Ideation-Workshop mit dem Product Owner getroffen:
+
+| # | Thema | Entscheidung |
+|---|-------|--------------|
+| 1 | Mehrere Streams pro Channel | **Ja** — jeder Sender bekommt einen Slot, alle werden angezeigt |
+| 2 | Sichtbarkeit für späte Joiner | **Ja** — Stream ist für alle Channel-Mitglieder jederzeit sichtbar |
+| 3 | Interaktion Streamer ↔ Zuschauer | **Native Sharkord-Features** (Voice, Chat) — kein extra Chat/Emotes im Plugin |
+| 4 | Verhalten beim Channel-Verlassen | **Sofortiges Beenden** — kein Grace-Period |
+| 5 | Zuschauer-Steuerung | **Keine** — keine Pause, keine Qualitätswahl, alle bekommen identische HQ-Version |
+| 6 | Netzwerk-Reconnect | **Automatisch** — solange Sender noch im Channel ist |
+| 7 | Admin beendet Stream | **Ja, mit Benachrichtigung** — Streamer kann manuell neu starten |
+| 8 | Token-Use-Case | **Sowohl dauerhafte OBS-Auth als auch API-Key** — beides gleichzeitig |
+| 9 | Bitrate/Auflösungs-Limit | **Nein** — volle Leistung, max. 10 Zuschauer |
+| 10 | Zuschauer-Status-Anzeige | **Nein** — Sharkord-Standard, alle Channel-Mitglieder sehen den Stream |
+
+---
+
+## 9. Offene Punkte & Vertiefung
 
 Die folgenden Themen müssen in der Design-Phase noch detailliert werden:
 
-1. **RTMP-Port:** Standard 1935 oder konfigurierbar? Konflikte mit bestehenden Diensten?
-2. **ffmpeg-Pfad:** Wird ffmpeg vom Docker-Image bereitgestellt oder muss es installiert werden?
+1. **RTMP-Pfad:** Konfigurierbar über Plugin-Settings (Standard `/live`), um Konflikte mit bestehenden Diensten zu vermeiden.
+2. **ffmpeg:** Wird beim ersten Plugin-Start automatisch heruntergeladen (falls nicht vorhanden). Kein manuelles Setup nötig.
 3. **Recording:** Sollen Streams aufgezeichnet werden können (z.B. für spätere Wiedergabe)?
 4. **Bitrate-Limits:** Sollen Server-Admins maximale Bitrates pro Channel konfigurieren können?
 5. **Mobile Unterstützung:** Funktioniert das Zuschauen auch auf mobilen Sharkord-Clients?

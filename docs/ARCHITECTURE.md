@@ -114,7 +114,30 @@ const audioProducer = await plainTransport.produce({
 });
 ```
 
-### 2.3 Stream Lifecycle
+### 2.3 Multi-Stream pro Channel
+
+Anders als zunächst geplant, sind **mehrere gleichzeitige Streams pro Channel erlaubt**. Das bedeutet:
+
+- Jeder Sender bekommt einen eigenen Mediasoup-Producer-Paar (Video + Audio).
+- Im UI werden alle aktiven Streams nebeneinander oder als Liste angezeigt.
+- Der Stream-Manager verwaltet eine Map: `channelId -> Map<userId, ActiveStream>`.
+- Ressourcen-Limit gilt pro Stream: max 10 Zuschauer je Stream.
+
+```
+Channel A
+├── Stream von User 1 (Game-Stream)
+├── Stream von User 2 (Webcam-Reaction)
+└── Stream von User 3 (Präsentation)
+```
+
+**Architektur-Implikationen:**
+- `stream-manager.ts` hält keinen "einen" aktiven Stream, sondern ein Set pro Channel.
+- UI-Component (`StreamPanel`) rendert mehrere `<video>` Elemente oder Tabs.
+- Zuschauer-Count ist pro Stream, nicht pro Channel.
+
+---
+
+## 2.4 Stream Lifecycle
 
 ```
 User typed /stream-start
@@ -218,7 +241,7 @@ src/
 
 | Risiko | Impact | Mitigation |
 |---|---|---|
-| **ffmpeg nicht installiert** | Blocker | Im Dockerfile.dev/ffmpeg installieren; bei Prod-Deployment dokumentieren |
+| **ffmpeg nicht installiert** | Blocker | Automatischer Download beim ersten Plugin-Start (via `scripts/download-ffmpeg.ts`, analog vid-with-friends Pattern) |
 | **Port 1935 belegt / Firewall** | Hoch | Port konfigurierbar machen; in docs/ dokumentieren |
 | **Mediasoup PlainTransport nicht exponiert** | Blocker | Mit Sharkord-Team klären, ob `ctx.voice.getRouter()` + PlainTransport aus Plugin-SDK verfügbar sind |
 | **ffmpeg `-listen 1` stabil?** | Mittel | Monitoring + Auto-Restart bei ffmpeg-Absturz |
