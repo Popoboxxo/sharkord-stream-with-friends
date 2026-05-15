@@ -1,136 +1,170 @@
 # Architecture — sharkord-stream-with-friends
 
 **Status:** Concept / Design Phase  
-**Ziel:** Technische Vertiefung der Streaming-Requirements
+**Scope:** OBS-Only RTMP Ingest into Sharkord Voice Channels
 
 ---
 
 ## Konzept-Übersicht
 
-Das Plugin bringt **Live-Streaming** in Sharkord Voice-Channels. Der Kernunterschied zu "vid-with-friends":
+Das Plugin ermöglicht **OBS-basiertes Live-Streaming** in Sharkord Voice-Channels. Der Unterschied zu nativen Sharkord-Features:
 
-| | vid-with-friends | stream-with-friends |
+| | Nativer Sharkord Voice/Video | stream-with-friends (OBS) |
 |---|---|---|
-| **Quelle** | YouTube-Videos (externe URLs) | OBS / Webcam / Bildschirm (Live-Ingest) |
-| **Latenz** | Sekunden (HLS + Sync) | Sub-sekunde (WebRTC/Mediasoup) |
-| **Ziel** | Gemeinsames Video-Gucken | Live-Übertragung + Voice parallel |
-| **Steuerung** | Queue, Play, Pause | Start/Stop, Token-basiert |
+| **Quelle** | Webcam, Mikrofon, Screenshare (Browser) | OBS-Produktion (Szenen, Overlays, Quellen) |
+| **Qualität** | Browser-standard, begrenzt | Professionell (bis 4K, Multi-Source, Overlays) |
+| **Steuerung** | Ein-/Aus-Knopf in UI | OBS-Studio, volle Produktionskontrolle |
+| **Ingest** | WebRTC direkt | RTMP → ffmpeg → Mediasoup |
+
+Webcam und Screenshare sind **out of scope** — Sharkord behandelt das nativ. Dieses Plugin ist für Nutzer, die ihre OBS-Produktion (Gameplay, Präsentationen, Events) an Freunde im Channel senden wollen.
 
 ---
 
 ## 1. High-Level Flow
 
 ```
-┌─────────────┐     RTMP / WHIP      ┌──────────────────────────────┐
-│   OBS       │ ───────────────────> │  sharkord-stream-with-friends │
-│  (Sender)   │    Stream-Ingest     │         (Plugin)              │
-└─────────────┘                      └──────────────────────────────┘
-                                              │
-                                              │ Mediasoup Producer
-                                              ▼
-                                     ┌──────────────────────────────┐
-                                     │   Sharkord Mediasoup Router  │
-                                     │        (pro Channel)         │
-                                     └──────────────────────────────┘
-                                              │
-                         ┌────────────────────┼────────────────────┐
-                         │ Mediasoup Consumer │                    │
-                         ▼                    ▼                    ▼
-                   ┌──────────┐        ┌──────────┐        ┌──────────┐
-                   │  User A  │        │  User B  │        │  User C  │
-                   │(Zuschauer│        │(Zuschauer│        │(Zuschauer│
-                   └──────────┘        └──────────┘        └──────────┘
+┌─────────────┐     RTMP (H.264 + AAC)    ┌──────────────────────────────┐
+│   OBS       │ ──────────────────────────> │  sharkord-stream-with-friends │
+│  (Sender)   │    URL: rtmp://host:1935   │         (Plugin)              |
+│             │    Key: <channel-token>    │  • RTMP-Server (Bun/TCP)      │
+└─────────────┘                            │  • Token-Auth                 │
+                                           │  • ffmpeg Bridge              │
+                                           └──────────────────────────────┘
+                                                         │
+                                                         │ RTP (H.264 + Opus)
+                                                         ▼
+                                           ┌──────────────────────────────┐
+                                           │   Sharkord Mediasoup Router  │
+                                           │   (PlainTransport Producer)  │
+                                           └──────────────────────────────┘
+                                                         │
+                              ┌────────────────────────┼────────────────────────┐
+                              │ Mediasoup Consumer     │                        │
+                              ▼                        ▼                        ▼
+                        ┌──────────┐             ┌──────────┐            ┌──────────┐
+                        │  User A  │             │  User B  │            │  User C  │
+                        │(Zuschauer│             │(Zuschauer│            │(Zuschauer│
+                        └──────────┘             └──────────┘            └──────────┘
 ```
 
 ---
 
-## 2. Technische Lösungsansätze
+## 2. Technische Architektur
 
-### 2.1 OBS-Ingest: RTMP vs. WHIP vs. SRT
+### 2.1 RTMP-Server (Plugin-intern)
 
-**Option A: RTMP (empfohlen für erste Version)**
-- OBS unterstützt RTMP nativ (seit Jahren stabil).
-- Wir brauchen einen **RTMP-Server/Endpoint** im Plugin.
-- Der Plugin empfängt RTMP, dekodiert ffmpeg und leitet an Mediasoup weiter.
-- **Vorteil:** Jeder OBS-User kennt es.
-- **Nachteil:** Braucht einen RTMP-Server (z.B. `node-media-server` oder eigenen Server). Das würde einen zusätzlichen Port und evtl. einen Prozess bedeuten.
+Der RTMP-Server läuft **als Teil des Plugins**, nicht als separater Dienst.
 
-**Option B: WHIP (WebRTC Ingestion)**
-- Moderner Standard, OBS unterstützt WHIP seit v30 experimentell.
-- Direkter WebRTC-Ingest — kein RTMP-Transcoding nötig.
-- **Vorteil:** Weniger Latenz, kein ffmpeg-Transcoding, direkter Mediasoup-Producer.
-- **Nachteil:** OBS WHIP-Support ist noch experimentell, nicht alle Nutzer haben aktuelles OBS.
+**Option A: Minimaler RTMP-Server in Bun**
+- Ein TCP-Server auf Port 1935 (oder konfigurierbar).
+- Implementiert RTMP-Handshake + Chunk-Stream-Protocol.
+- Empfängt Audio (AAC) und Video (H.264) Streams.
+- Validiert den Stream-Key (Token) gegen die interne Token-Datenbank.
+- Schreibt empfangene NAL-Units / AAC-Frames in eine Pipe oder Buffer.
 
-**Option C: SRT**
-- Hochwertig, latenzarm, aber OBS-Support begrenzt.
-- **Empfehlung:** Für spätere Versionen.
+**Option B: ffmpeg als RTMP-Server**
+- ffmpeg mit `-listen 1 -i rtmp://0.0.0.0:1935/live/<token>`.
+- Einfacher zu implementieren, aber weniger flexibel bei Token-Validierung.
+- **Empfohlener Startpunkt** für Prototyp.
 
-**Vorschlag für MVP:**
-- **RTMP** als primäre Option (maximale OBS-Kompatibilität).
-- Optional einen kleinen **RTMP-zu-Mediasoup-Bridge** im Plugin starten (z.B. via `bun` + `rtmp-server` Library oder externer ffmpeg-Prozess).
-- **Alternative:** Wenn kein RTMP-Server im Plugin laufen soll, könnte man stattdessen **WebRTC-Publish aus dem Browser** anbieten (Webcam/Share Screen) — das funktioniert direkt ohne RTMP.
+**Empfehlung für MVP:**
+Starte mit **Option B (ffmpeg als RTMP-Listener)**. Das ist schneller prototypisierbar. Für v2 kann man einen nativen RTMP-Server in Bun bauen.
 
-### 2.2 Webcam / Bildschirm-Teilen (Browser-basiert)
+### 2.2 ffmpeg Bridge (RTMP → RTP → Mediasoup)
 
-Dies ist technisch einfacher:
-- Nutzer gibt Kamera/Bildschirm im Browser frei.
-- Plugin erstellt einen WebRTC-Producer direkt via `ctx.voice.createStream()`.
-- Kein Ingest-Server nötig.
-- **Vorteil:** Perfekt integriert, kein OBS nötig.
+ffmpeg ist das Bindeglied zwischen RTMP und Mediasoup:
 
-**Idee:** Zwei Modi anbieten:
-1. **"Stream"-Modus:** OBS via RTMP (für Power-User, höchste Qualität).
-2. **"Share"-Modus:** Browser WebRTC (Ein-Klick, keine Extra-Software).
+```bash
+ffmpeg \
+  -i rtmp://0.0.0.0:1935/live/<token> \
+  -c:v copy \
+  -c:a libopus -ar 48000 -ac 2 \
+  -f tee \
+  "[select=v:f=rtp:ssrc=11111111:payload_type=101]rtp://127.0.0.1:10001|[select=a:f=rtp:ssrc=22222222:payload_type=100]rtp://127.0.0.1:10002"
+```
 
-### 2.3 Mediasoup-Integration
+**Komponenten:**
+- `-c:v copy`: Video (H.264) wird ohne Re-Encoding durchgereicht — verlustfrei, geringe CPU-Last.
+- `-c:a libopus`: Audio (AAC aus OBS) wird nach Opus transcodiert — Mediasoup erwartet Opus.
+- `-f tee`: Trennt Video und Audio in zwei RTP-Streams.
+- RTP-Ziele werden an einen Mediasoup `PlainTransport` angeschlossen.
 
-Sharkord nutzt bereits Mediasoup für Voice. Wir können den **gleichen Router** nutzen:
-
+**PlainTransport Setup:**
 ```typescript
-// Pseudo-Code
-const router = ctx.voice.getRouter(channelId);
+const plainTransport = await router.createPlainTransport({
+  listenIp: '127.0.0.1',
+  rtcpMux: true,
+  comedia: false,
+});
 
-// Ingest-Producer erstellen (Audio + Video)
-const producer = await router.createProducer({
+const videoProducer = await plainTransport.produce({
   kind: 'video',
-  rtpParameters: { ... }
+  rtpParameters: {
+    codecs: [{ mimeType: 'video/H264', payloadType: 101, clockRate: 90000 }],
+    encodings: [{ ssrc: 11111111 }],
+  },
+});
+
+const audioProducer = await plainTransport.produce({
+  kind: 'audio',
+  rtpParameters: {
+    codecs: [{ mimeType: 'audio/opus', payloadType: 100, clockRate: 48000, channels: 2 }],
+    encodings: [{ ssrc: 22222222 }],
+  },
 });
 ```
 
-**Aber:** Ein RTMP-Ingest kommt nicht als WebRTC-Stream an. Wir brauchen eine Bridge:
-- RTMP -> ffmpeg -> RTP -> Mediasoup PlainTransport.
-- Oder: RTMP -> speichern in Pipe -> ffmpeg liest Pipe -> RTP an Mediasoup.
+### 2.3 Stream Lifecycle
 
-**Architektur für RTMP-Ingest:**
 ```
-OBS --RTMP--> [RTMP Endpoint] --raw video--> ffmpeg --RTP--> [Mediasoup PlainTransport] --> Router --> Consumers
+User typed /stream-start
+         │
+         ▼
+┌─────────────────┐
+│  Token generiert │
+│  RTMP-URL erzeugt│
+└─────────────────┘
+         │
+         ▼
+┌─────────────────┐
+│  ffmpeg startet │
+│  (RTMP-Listener)│
+└─────────────────┘
+         │
+         ▼
+┌─────────────────────────┐
+│  Auf OBS-Connection      │
+│  warten (max 5 Min)    │
+└─────────────────────────┘
+         │
+    ┌────┴────┐
+    ▼         ▼
+Connected   Timeout
+    │         │
+    ▼         ▼
+Stream      Auto-Stop
+aktiv       (Token invalid)
+    │
+    ▼
+┌─────────────────────────┐
+│  Mediasoup Producer      │
+│  erzeugt → Router →      │
+│  Consumers               │
+└─────────────────────────┘
 ```
 
-Der RTMP Endpoint könnte ein minimaler Server sein, der auf einem Port lauscht (z.B. 1935 oder ein custom Port). ffmpeg wird dann vom Plugin gestartet und nimmt den Stream, transcodiert ihn in ein Mediasoup-freundliches Format und sendet ihn an den PlainTransport.
+### 2.4 Token-Authentifizierung & RTMP-Key
 
-**Wichtig:** Der Port für RTMP muss freigegeben sein. Das widerspricht REQ-009 (kein extra Webserver/Port) leicht — aber es ist ein notwendiger Kompromiss für OBS-Support. Alternative: WHIP nutzt HTTP/HTTPS-Ports, die evtl. schon offen sind.
+Der Token ist gleichzeitig der **RTMP Stream Key**:
 
-### 2.4 Token-Authentifizierung
-
-Der Token-Mechanismus:
-1. Sender startet Stream via `/stream-start`.
-2. Plugin generiert Token: `sha256(channelId + userId + timestamp + random)`.
-3. Plugin zeigt OBS-URL + Token an: `rtmp://sharkord-server:1935/live/${token}`.
-4. OBS verbindet mit RTMP-URL + Token als Stream-Key.
-5. RTMP-Server prüft Token gegen Plugin-API (oder Token ist der Stream-Key).
-6. Bei ungültigem Token: Verbindung ablehnen.
-
-**Sicherheit:**
-- Token ist nur während der Stream-Session gültig.
-- Token ist an Channel + User gebunden.
-- Kein Token = kein Ingest.
-
-### 2.5 Channel-Isolation
-
-Jeder Channel bekommt seinen eigenen **Mediasoup-Router** (Sharkord macht das bereits). Das Plugin muss sicherstellen:
-- Ein Producer gehört zu genau einem Router (= einem Channel).
-- Wenn der Sender den Channel verlässt, wird der Producer geschlossen.
-- Zuschauer in anderen Channels sehen den Producer nicht.
+1. `/stream-start` → Plugin generiert Token: `base64(channelId + userId + timestamp + nonce)`.
+2. Plugin zeigt an: `rtmp://<sharkord-host>:1935/live/<token>`.
+3. Nutzer kopiert URL in OBS → Settings → Stream → Custom → URL + Key.
+4. OBS verbindet mit RTMP-Server und sendet `<token>` als `app` oder `name` Parameter.
+5. RTMP-Server (ffmpeg oder Plugin-Code) prüft Token:
+   - Existiert? Gültig? Channel aktiv? User noch im Channel?
+   - Ungültig → Verbindung sofort trennen.
+6. Bei `/stream-stop` oder Verlassen des Channels → Token invalidiert → ffmpeg-Prozess gekillt.
 
 ---
 
@@ -138,50 +172,68 @@ Jeder Channel bekommt seinen eigenen **Mediasoup-Router** (Sharkord macht das be
 
 ```
 src/
-  index.ts                    # Plugin-Entry (Wiring)
+  index.ts                      # Plugin-Entry (Wiring)
   commands/
-    stream-start.ts           # /stream-start Command
-    stream-stop.ts            # /stream-stop Command
-    stream-info.ts            # /stream-info Command
-    stream-token.ts           # /stream-token Command
+    stream-start.ts             # /stream-start — Token generieren, ffmpeg starten
+    stream-stop.ts              # /stream-stop — Stream beenden
+    stream-info.ts              # /stream-info — Status + Zuschauerzahl
+    stream-token.ts             # /stream-token — Token erneut anzeigen
   services/
-    rtmp-server.ts            # RTMP-Ingest-Server (optional)
-    ingest-bridge.ts          # RTMP -> Mediasoup Bridge (ffmpeg)
-    stream-manager.ts         # Zustand: aktive Streams pro Channel
-    token-service.ts          # Token-Generierung & Validierung
+    stream-manager.ts           # Zustand: aktive Streams pro Channel
+    token-service.ts            # Token-Generierung & Validierung
+    rtmp-bridge.ts              # ffmpeg-Prozess starten/stoppen/überwachen
+    ingest-monitor.ts           # Verbindungs-Health-Check, Auto-Restart
   handlers/
-    voice-events.ts           # user:joined_voice, user:left_voice
-    stream-events.ts          # Ingest-Events, Producer-Events
+    voice-events.ts             # user:joined_voice, user:left_voice
+    producer-events.ts          # Mediasoup Producer-Events
   components/
-    StreamPanel.tsx           # Video-Anzeige im UI
-    StreamControls.tsx        # Start/Stop Buttons
-    StreamInfo.tsx            # Sender-Name, Zuschauerzahl
+    StreamPanel.tsx             # Video-Anzeige im UI
+    StreamControls.tsx          # Start/Stop + Token-Anzeige
+    StreamInfo.tsx              # Sender-Name, Zuschauerzahl, Live-Indikator
   hooks/
-    useSharkordStreamState.ts # React Hook für Stream-Zustand
+    useSharkordStreamState.ts   # React Hook für Stream-Zustand
   utils/
-    constants.ts
-    rtmp-config.ts
+    constants.ts                # Ports, Codecs, Defaults
+    rtmp-url.ts               # URL/Token-Formatter
+    ffmpeg-args.ts            # ffmpeg Kommandozeilen-Builder
 ```
 
 ---
 
-## 4. Offene Architektur-Entscheidungen
+## 4. Design-Entscheidungen
 
-| Entscheidung | Optionen | Empfehlung |
+| Entscheidung | Gewählt | Begründung |
 |---|---|---|
-| **Ingest-Protokoll** | RTMP / WHIP / SRT | RTMP für MVP (OBS-Kompatibilität), WHIP für v2 |
-| **RTMP-Server** | Eigenbau / node-media-server / nur Browser-WebRTC | Browser-WebRTC für MVP (kein Server), RTMP für v2 |
-| **Audio-Mixing** | Voice-Chat + Stream parallel / gemischt | Parallel mit separaten Volume-Controls |
-| **Komponenten-Platzierung** | Channel-Panel / Overlay / separater Tab | Channel-Panel als Overlay |
+| **Ingest-Protokoll** | RTMP | OBS-Standard, maximal kompatibel, kein experimenteller WHIP-Support nötig |
+| **RTMP-Server** | ffmpeg mit `-listen 1` | Schnellster Prototyp, kein eigener RTMP-Stack nötig |
+| **Video-Transcoding** | `-c:v copy` (kein Re-Encode) | Verlustfrei, geringe CPU-Last |
+| **Audio-Transcoding** | AAC → Opus via ffmpeg | Mediasoup erfordert Opus |
+| **Mediasoup Transport** | PlainTransport (RTP) | Direktes RTP ohne WebRTC-Overhead für Server-seitigen Ingest |
+| **Token** = Stream-Key | Ja | Einfachste Integration in OBS |
+| **Audio-Mixing** | Stream + Voice parallel | Unabhängige Volume-Controls, kein Ducking im MVP |
 
 ---
 
 ## 5. Risiken & Abhängigkeiten
 
-1. **Mediasoup PlainTransport:** Muss von Sharkord-Plugin-SDK exponiert werden (aktuell nicht dokumentiert).
-2. **ffmpeg:** Für RTMP-Transcoding wird ffmpeg benötigt. Muss im Docker-Image oder als Dependency verfügbar sein.
-3. **Ports:** RTMP braucht Port 1935 (oder alternativen). Muss dokumentiert werden.
-4. **SDK-Limits:** `ctx.voice.createStream()` und `getRouter()` sind relativ neu — API könnte sich ändern.
+| Risiko | Impact | Mitigation |
+|---|---|---|
+| **ffmpeg nicht installiert** | Blocker | Im Dockerfile.dev/ffmpeg installieren; bei Prod-Deployment dokumentieren |
+| **Port 1935 belegt / Firewall** | Hoch | Port konfigurierbar machen; in docs/ dokumentieren |
+| **Mediasoup PlainTransport nicht exponiert** | Blocker | Mit Sharkord-Team klären, ob `ctx.voice.getRouter()` + PlainTransport aus Plugin-SDK verfügbar sind |
+| **ffmpeg `-listen 1` stabil?** | Mittel | Monitoring + Auto-Restart bei ffmpeg-Absturz |
+| **H.264 Profile/Level Mismatch** | Mittel | ffmpeg forced H.264 Baseline/High Profile je nach Mediasoup-Capabilities |
+| **OBS-User verwenden nicht H.264** | Niedrig | OBS-Encoding-Settings erzwingen oder ffmpeg fallback auf Re-Encode |
+
+---
+
+## 6. Offene Architektur-Fragen
+
+1. **Soll der RTMP-Port konfigurierbar sein?** (Standard 1935, aber evtl. Konflikte)
+2. **Soll ffmpeg im Plugin-Prozess gestartet werden (`Bun.spawn`) oder als separater Service?**
+3. **Wie wird die ffmpeg-Konsole überwacht?** (stdout/stderr Parsing für Fehler)
+4. **Was passiert bei mehreren Sharkord-Instanzen (Cluster)?** (Token-State muss geteilt oder sticky sein)
+5. **Soll es einen "Stream-Vorschau" für den Sender geben?** (Echo/Rückkopplung vermeiden)
 
 ---
 

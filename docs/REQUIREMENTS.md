@@ -2,13 +2,13 @@
 
 **Status:** Draft  
 **Letzte Aktualisierung:** 2026-05-15  
-**Autor:** Product Owner / Sharkord Team
+**Scope:** OBS-Only (Webcam/Screenshare ist nativ in Sharkord, out of scope)
 
 ---
 
 ## Vision
 
-> Abends ins Sharkord gehen, in einen Voice-Channel joinen, mit Kumpels quatschen — und gleichzeitig den eigenen OBS-Stream oder die Webcam direkt in den Channel übertragen. Alle im Channel sehen und hören denselben Stream, synchron, ohne externe Webseiten oder Tools.
+> Abends ins Sharkord gehen, in einen Voice-Channel joinen, mit Kumpels quatchen — und gleichzeitig meinen OBS-Stream direkt in den Channel schicken. Alle im Channel sehen denselben Live-Stream, synchron, ohne externe Webseiten. Ich nutze meine gewohnte OBS-Produktionsumgebung (Szenen, Overlays, Quellen) und übertrage das Ergebnis verlustfrei an Sharkord.
 
 ---
 
@@ -41,66 +41,62 @@ Als **Sender** möchte ich, dass mein Stream für bis zu **10 gleichzeitige Zusc
 
 ## 2. Epic: OBS-Integration & Stream-Ingest
 
-### REQ-004: OBS als Stream-Quelle
-Als **Streamer** möchte ich OBS über **RTMP** oder **WebRTC WHIP** direkt in Sharkord senden lassen, damit ich meine gewohnte Produktions-Software nutzen kann.
+### REQ-004: OBS über RTMP in Sharkord
+Als **Streamer** möchte ich OBS über **RTMP** direkt in Sharkord senden lassen, damit ich meine gewohnte Produktions-Software nutzen kann.
 
 **Akzeptanzkriterien:**
-- OBS kann eine URL + Stream-Key eingeben, der vom Plugin bereitgestellt wird.
-- Das Plugin empfängt den Ingest und leitet ihn an den Sharkord/Mediasoup-Router weiter.
-- Video und Audio werden beide übertragen.
+- OBS kann eine RTMP-URL + Stream-Key eingeben, die vom Plugin bereitgestellt werden.
+- Das Plugin empfängt den RTMP-Ingest und leitet Audio + Video an den Sharkord/Mediasoup-Router weiter.
 - Die Übertragung ist **möglichst verlustfrei und latenzarm** (Ziel: <500ms Gesamtlatenz).
+- Das Plugin startet einen minimalen RTMP-Server (z.B. auf Port 1935 oder konfigurierbar), der OBS entgegennimmt.
+- Kein separater nginx/Node-Server außerhalb des Plugins nötig.
 
-### REQ-005: Webcam-In-App-Stream
-Als **Nutzer ohne OBS** möchte ich meine Webcam und mein Mikrofon direkt aus Sharkord heraus streamen können, damit ich keine extra Software brauche.
-
-**Akzeptanzkriterien:**
-- Über den Browser/Web-Client kann der Nutzer Kamera/Mikrofon freigeben.
-- Der Stream wird genauso an den Channel gebunden wie ein OBS-Stream.
-- Funktioniert parallel zur normalen Voice-Teilnahme.
-
-### REQ-006: Stream-Qualität adaptive
-Als **Zuschauer** möchte ich, dass die Stream-Qualität der Netzwerkbedingungen angepasst wird, damit es bei schlechterem Internet nicht ruckelt.
+### REQ-005: RTMP-Ingest-Bridge
+Als **System** muss der RTMP-Stream in ein Mediasoup-kompatibles Format umgewandelt werden, damit Zuschauer ihn über WebRTC empfangen können.
 
 **Akzeptanzkriterien:**
-- Simulcast (mehrere Qualitätsstufen) wird bei WebRTC-Sendern unterstützt.
-- Der Empfänger bekommt die für ihn passende Auflösung/Bitrate.
-- Bei OBS-Ingest kann der Sender mehrere Bitrates simulieren oder eine feste HQ-Bitrate senden.
+- Ein ffmpeg-Prozess (gestartet vom Plugin) nimmt RTMP entgegen und sendet RTP an einen Mediasoup PlainTransport.
+- Video: H.264 (High Profile, Level 4.2) für maximale Kompatibilität.
+- Audio: Opus 48kHz stereo.
+- Der ffmpeg-Prozess wird vom Plugin überwacht und bei Absturz automatisch neu gestartet.
 
 ---
 
 ## 3. Epic: Sender-Workflow & Kontrolle
 
-### REQ-007: Stream Start/Stop aus Sharkord UI
+### REQ-006: Stream Start/Stop aus Sharkord UI
 Als **Sender** möchte ich meinen Stream direkt in der Sharkord-Oberfläche starten und stoppen können, damit ich nicht in andere Tools wechseln muss.
 
 **Akzeptanzkriterien:**
-- Ein "/stream-start" Command oder UI-Button initiiert den Stream.
-- Ein "/stream-stop" Command oder UI-Button beendet ihn.
+- Ein `/stream-start` Command oder UI-Button initiiert den Stream.
+- Das Plugin zeigt RTMP-URL und Stream-Key an (z.B. `rtmp://server:1935/live/<token>`).
+- Ein `/stream-stop` Command oder UI-Button beendet ihn.
 - Beim Verlassen des Channels wird der Stream automatisch gestoppt.
 - Ein Indicator zeigt an, dass gerade gestreamt wird.
 
-### REQ-008: Stream-Token für Authentifizierung
-Als **Sender** möchte ich einen **eindeutigen Stream-Token** erhalten, den ich in OBS eingeben muss, damit nicht jeder beliebige Nutzer in meinen Channel streamen kann.
+### REQ-007: Stream-Token für Authentifizierung
+Als **Sender** möchte ich einen **eindeutigen Stream-Token** erhalten, den ich als Stream-Key in OBS eingeben muss, damit nicht jeder beliebige Nutzer in meinen Channel streamen kann.
 
 **Akzeptanzkriterien:**
 - Das Token ist einmalig pro Stream-Session und an den Channel gebunden.
 - Das Token läuft ab, wenn der Stream gestoppt wird oder der Channel verlassen wird.
+- Der RTMP-Server lehnt Verbindungen mit ungültigem Token ab.
 - Optional: Token kann auf bestimmte Nutzer beschränkt werden (nur Channel-Owner/Mod).
 
-### REQ-009: Kein externer Webserver
-Als **Server-Admin** möchte ich, dass für das Streaming **kein separater Webserver oder Reverse-Proxy** nötig ist, damit die Infrastruktur einfach bleibt.
+### REQ-008: Kein externer Webserver
+Als **Server-Admin** möchte ich, dass für das Streaming **kein separater Reverse-Proxy oder Webserver** nötig ist, damit die Infrastruktur einfach bleibt.
 
 **Akzeptanzkriterien:**
 - Das Plugin nutzt ausschließlich die Sharkord-API und Mediasoup-Integration.
-- Keine zusätzlichen Ports außer denen, die Sharkord/Mediasoup ohnehin benötigt.
-- Keine externe Website, kein separater Node-Server, kein nginx/caddy für das Plugin.
-- Notwendige Portfreigaben (für Mediasoup RTP/RTCP) sind dokumentiert, aber minimiert.
+- Keine externe Website, kein nginx/caddy für das Plugin.
+- Der RTMP-Server läuft als Teil des Plugin-Prozesses (z.B. via Bun TCP-Server oder eingebetteter RTMP-Listener).
+- Notwendige Portfreigaben (RTMP + Mediasoup RTP/RTCP) sind dokumentiert.
 
 ---
 
 ## 4. Epic: Zuschauer-Experience
 
-### REQ-010: Stream-Anzeige in Sharkord UI
+### REQ-009: Stream-Anzeige in Sharkord UI
 Als **Zuschauer** möchte ich den laufenden Stream direkt im Channel-Panel von Sharkord sehen, damit ich nichts verpasse.
 
 **Akzeptanzkriterien:**
@@ -109,14 +105,14 @@ Als **Zuschauer** möchte ich den laufenden Stream direkt im Channel-Panel von S
 - Es gibt eine klare "Live"-Indikator-Anzeige.
 - Die UI ist responsive und passt sich der Fenstergröße an.
 
-### REQ-011: Zuschauer-Count anzeigen
+### REQ-010: Zuschauer-Count anzeigen
 Als **Sender** möchte ich sehen, wie viele Leute gerade meinen Stream anschauen, damit ich Feedback habe.
 
 **Akzeptanzkriterien:**
 - Die Anzahl aktiver Zuschauer wird im UI angezeigt (z.B. "3 Zuschauer").
 - Aktualisierung in Echtzeit (oder nahezu Echtzeit).
 
-### REQ-012: Parallel Voice + Stream
+### REQ-011: Parallel Voice + Stream
 Als **Zuschauer** möchte ich weiterhin normal im Voice-Channel sprechen können, während ich einen Stream anschaue, damit die Kommunikation nicht unterbrochen wird.
 
 **Akzeptanzkriterien:**
@@ -128,7 +124,7 @@ Als **Zuschauer** möchte ich weiterhin normal im Voice-Channel sprechen können
 
 ## 5. Epic: Sicherheit & Berechtigungen
 
-### REQ-013: Nur eigener Channel
+### REQ-012: Nur eigener Channel
 Als **System** soll sichergestellt werden, dass ein Nutzer nur in den Channel streamen kann, in dem er **persönlich eingeloggt und aktiv** ist.
 
 **Akzeptanzkriterien:**
@@ -136,7 +132,7 @@ Als **System** soll sichergestellt werden, dass ein Nutzer nur in den Channel st
 - Das Plugin prüft `currentVoiceChannelId` gegen den Ziel-Channel.
 - Ungültige Versuche werden mit einer klaren Fehlermeldung quittiert.
 
-### REQ-014: Sender-Berechtigungen (optional)
+### REQ-013: Sender-Berechtigungen (optional)
 Als **Server-Admin** möchte ich optional einschränken können, wer in einem Channel streamen darf (z.B. nur Channel-Owner oder bestimmte Rollen).
 
 **Akzeptanzkriterien:**
@@ -148,33 +144,33 @@ Als **Server-Admin** möchte ich optional einschränken können, wer in einem Ch
 
 ## 6. Nicht-funktionale Anforderungen (NFR)
 
-### REQ-015: Latenz
+### REQ-014: Latenz
 Die Gesamtlatenz vom OBS-Sender bis zum Zuschauer soll unter **500ms** liegen (bei guter Netzwerkverbindung).
 
-### REQ-016: Ressourcen-Limit
+### REQ-015: Ressourcen-Limit
 Das Plugin darf auf dem Sharkord-Server nicht mehr als **1 zusätzlichen Mediasoup-Producer** pro Stream-Channel erzeugen (für den Ingest). Die Zuschauer konsumieren über normale Mediasoup-Consumer, die Sharkord ohnehin verwaltet.
 
-### REQ-017: Kompatibilität
+### REQ-016: Kompatibilität
 Das Plugin muss mit der **Sharkord v0.0.20** API funktionieren und die verfügbaren Plugin-Kommandos, Events und Mediasoup-Hooks nutzen.
 
-### REQ-018: Fehlertoleranz
-Wenn der Stream unerwartet abbricht (Netzwerkfehler, OBS-Crash), soll das Plugin den Zuschauern eine "Stream unterbrochen"-Meldung anzeigen und nach 5 Sekunden automatisch auf "Stream beendet" wechseln.
+### REQ-017: Fehlertoleranz
+Wenn der Stream unerwartet abbricht (Netzwerkfehler, OBS-Crash, ffmpeg-Crash), soll das Plugin den Zuschauern eine "Stream unterbrochen"-Meldung anzeigen und nach 5 Sekunden automatisch auf "Stream beendet" wechseln.
 
 ---
 
 ## 7. UI/UX Anforderungen
 
-### REQ-019: Alles in Sharkord UI
+### REQ-018: Alles in Sharkord UI
 Sämtliche Interaktionen (Stream starten, stoppen, zuschauen, Token anzeigen, Einstellungen) müssen über Sharkord-Plugin-Komponenten in der **nativen Sharkord UI** erfolgen. Keine externen Fenster, Popups oder Websites.
 
-### REQ-020: Plugin-Kommandos
+### REQ-019: Plugin-Kommandos
 Folgende Slash-Kommandos sollen verfügbar sein:
-- `/stream-start` — Stream starten (generiert Token, zeigt OBS-URL)
+- `/stream-start` — Stream starten (generiert Token, zeigt RTMP-URL + Key)
 - `/stream-stop` — Stream beenden
 - `/stream-info` — Zeigt aktuellen Stream-Status und Zuschauerzahl
 - `/stream-token` — Zeigt aktuelles OBS-Token erneut an
 
-### REQ-021: Stream-Overlay-Component
+### REQ-020: Stream-Overlay-Component
 Ein React-Component (`StreamPanel`) soll im Channel-UI eingebunden werden können (via Sharkord Plugin Slot oder Overlay). Es zeigt:
 - Video-Stream (WebRTC `<video>` Element)
 - Sender-Name
@@ -188,13 +184,23 @@ Ein React-Component (`StreamPanel`) soll im Channel-UI eingebunden werden könne
 
 Die folgenden Themen müssen in der Design-Phase noch detailliert werden:
 
-1. **Ingest-Protokoll:** RTMP vs. SRT vs. WHIP (WebRTC) — was ist mit Sharkord/Mediasoup am einfachsten umsetzbar?
-2. **Recording:** Sollen Streams aufgezeichnet werden können (z.B. für spätere Wiedergabe)?
-3. **Screen-Sharing vs. OBS:** Soll es einen dedizierten "Bildschirm teilen"-Modus geben, der OBS ersetzt?
-4. **Chat-Integration:** Soll ein Stream-Chat neben dem Video angezeigt werden?
-5. **Bitrate-Limits:** Sollen Server-Admins maximale Bitrates pro Channel konfigurieren können?
-6. **Mobile Unterstützung:** Funktioniert das Zuschauen auch auf mobilen Sharkord-Clients?
-7. **Priorisierung:** Was passiert, wenn jemand im Channel spricht UND ein Stream läuft — Audio-Mixing?
+1. **RTMP-Port:** Standard 1935 oder konfigurierbar? Konflikte mit bestehenden Diensten?
+2. **ffmpeg-Pfad:** Wird ffmpeg vom Docker-Image bereitgestellt oder muss es installiert werden?
+3. **Recording:** Sollen Streams aufgezeichnet werden können (z.B. für spätere Wiedergabe)?
+4. **Bitrate-Limits:** Sollen Server-Admins maximale Bitrates pro Channel konfigurieren können?
+5. **Mobile Unterstützung:** Funktioniert das Zuschauen auch auf mobilen Sharkord-Clients?
+6. **Audio-Mixing:** Was passiert, wenn jemand im Channel spricht UND ein Stream läuft — gleichzeitige Wiedergabe oder Ducking?
+7. **Mehrere OBS-Szenen:** Soll der Stream bei Szenenwechsel in OBS nahtlos weiterlaufen (ja, das ist OBS-seitig gelöst)?
+
+---
+
+## Excluded (Out of Scope)
+
+Die folgenden Features werden **nicht** vom Plugin abgedeckt, da sie nativ in Sharkord vorhanden sind oder außerhalb des Fokus liegen:
+
+- **Webcam-Streaming:** Sharkord unterstützt Voice/Video bereits nativ. Wer nur Webcam/Mikrofon teilen will, nutzt den bestehenden Voice-Chat.
+- **Screenshare:** Ebenfalls nativ in Sharkord verfügbar oder via OBS als Quelle lösbar.
+- **Browser-basiertes Streaming:** Kein WHIP/SRT-Browser-Ingest. Nur OBS via RTMP.
 
 ---
 
@@ -202,12 +208,13 @@ Die folgenden Themen müssen in der Design-Phase noch detailliert werden:
 
 | Begriff | Bedeutung |
 |---------|-----------|
-| **Ingest** | Der eingehende Stream vom Sender (OBS/Browser) zum Server |
+| **Ingest** | Der eingehende Stream vom Sender (OBS) zum Server via RTMP |
 | **Producer** | Mediasoup-Producer — sendet Audio/Video an den Router |
 | **Consumer** | Mediasoup-Consumer — empfängt Audio/Video vom Router |
-| **Simulcast** | Senden desselben Streams in mehreren Qualitätsstufen gleichzeitig |
-| **WHIP** | WebRTC-HTTP Ingestion Protocol — Standard für Browser-zu-Server WebRTC |
-| **RTMP** | Real-Time Messaging Protocol — klassisches Streaming-Protokoll (OBS-Standard) |
+| **PlainTransport** | Mediasoup-Transport für RTP (nicht WebRTC, sondern direktes RTP) |
+| **RTMP** | Real-Time Messaging Protocol — klassisches Streaming-Protokoll, OBS-Standard |
+| **RTP** | Real-time Transport Protocol — Mediasoup internes Transport-Protokoll |
+| **Stream-Key / Token** | Eindeutiger Identifikator, der OBS autorisiert, in einen bestimmten Channel zu streamen |
 
 ---
 
