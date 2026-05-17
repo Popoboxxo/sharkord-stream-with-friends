@@ -7,7 +7,7 @@ import { clearAllStreams } from "./services/stream-manager";
 import { PLUGIN_NAME, VERSION, RTMP_PORT } from "./utils/constants";
 
 export default function plugin(context: PluginContext): PluginConfig {
-  const serverIp = "127.0.0.1";
+  const serverIp = process.env.RTMP_HOST || "127.0.0.1";
 
   context.log(`${PLUGIN_NAME} v${VERSION} initializing`);
 
